@@ -111,10 +111,26 @@ let%expect_test "availble moves" =
   return ()
 
 (* Exercise 2 *)
-
+let check_for_winner position peice (game: Game.t) =
+  let required_streak = Game_kind.win_length game.game_kind in
+ let rec check_down (position : Position.t) peice (game: Game.t) streak : bool =
+  match streak = required_streak, Map.find game.board (Position.down position) with
+  | true, _ -> true
+  | false, None -> false
+  | false, Some down_peice -> (match Piece.equal down_peice peice with
+  | true -> check_down  (Position.down position) down_peice game (streak + 1)
+  | false -> false) in
+;;
 let evaluate (game : Game.t) : Evaluation.t =
-  ignore game;
-  failwith "todo"
+  Map.fold game.board ~init:Evaluation.Game_continues
+    ~f:(fun ~key ~data game_state ->
+      let board_length = Game_kind.board_length game.game_kind in
+      match game_state with
+      | Game_continues -> (
+          match key.row < board_length && key.column < board_length with
+          | true -> check_for_winner key data game
+          | false -> Illegal_move)
+      | Illegal_move | Game_over _ -> game_state)
 
 (* Exercise 3 *)
 let winning_moves ~(me : Piece.t) (game : Game.t) : Position.t list =
