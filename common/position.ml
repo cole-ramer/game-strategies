@@ -18,6 +18,10 @@ let down { row; column } = { row = row + 1; column }
 let right { row; column } = { row; column = column + 1 }
 let up { row; column } = { row = row - 1; column }
 let left { row; column } = { row; column = column - 1 }
+let up_left { row; column } = { row = row - 1; column = column - 1 }
+let up_right { row; column } = { row = row + 1; column = column - 1 }
+let down_left { row; column } = { row = row - 1; column = column + 1 }
+let down_right { row; column } = { row = row + 1; column = column + 1 }
 
 let all_offsets =
   let ( >> ) = Fn.compose in

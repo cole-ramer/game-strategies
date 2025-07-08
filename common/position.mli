@@ -23,6 +23,11 @@ val up : t -> t
 val left : t -> t
 (** [left t] is [t]'s leftwards neighbor. *)
 
+val down_left : t -> t
+val down_right : t -> t
+val up_left : t -> t
+val up_right : t -> t
+
 val all_offsets : (t -> t) list
 (** [all_offsets] is a list of functions to compute all 8 neighbors of a cell
     (i.e. left, up-left, up, up-right, right, right-down, down, down-left). *)

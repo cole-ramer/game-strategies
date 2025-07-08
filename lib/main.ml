@@ -37,12 +37,14 @@ let print_game (game : Game.t) =
       ~f:(fun _ -> "-")
     |> String.concat
   in
-  let row_as_num =
+  let row_placeholder_list =
     List.init (Game_kind.board_length game.game_kind) ~f:(fun i -> i)
   in
-  let board_as_num = List.map row_as_num ~f:(fun _ -> row_as_num) in
-  let board =
-    List.mapi board_as_num ~f:(fun row_index row_list ->
+  let board_placeholder_list =
+    List.map row_placeholder_list ~f:(fun _ -> row_placeholder_list)
+  in
+  let rows_of_printed_game_board =
+    List.mapi board_placeholder_list ~f:(fun row_index row_list ->
         let row_with_piecies =
           List.mapi row_list ~f:(fun col_index _ ->
               match
@@ -56,7 +58,7 @@ let print_game (game : Game.t) =
         String.concat ~sep:" | " row_with_piecies)
   in
   let board_as_one_string =
-    String.concat ~sep:("\n" ^ break_line ^ "\n") board
+    String.concat ~sep:("\n" ^ break_line ^ "\n") rows_of_printed_game_board
   in
   print_endline board_as_one_string
 
@@ -111,32 +113,68 @@ let%expect_test "availble moves" =
   return ()
 
 (* Exercise 2 *)
-let check_for_winner position peice (game: Game.t) =
-  let required_streak = Game_kind.win_length game.game_kind in
- let rec check_down (position : Position.t) peice (game: Game.t) streak : bool =
-  match streak = required_streak, Map.find game.board (Position.down position) with
-  | true, _ -> true
-  | false, None -> false
-  | false, Some down_peice -> (match Piece.equal down_peice peice with
-  | true -> check_down  (Position.down position) down_peice game (streak + 1)
-  | false -> false) in
-;;
-let evaluate (game : Game.t) : Evaluation.t =
+let check_for_winner position peice (game : Game.t) =
+  let winning_streak_length = Game_kind.win_length game.game_kind in
+  let rec check_direction (direction_function : Position.t -> Position.t)
+      (position : Position.t) peice (game : Game.t) streak : int =
+    match Map.find game.board (direction_function position) with
+    | None -> streak
+    | Some next_piece -> (
+        match Piece.equal next_piece peice with
+        | true ->
+            check_direction direction_function
+              (direction_function position)
+              next_piece game (streak + 1)
+        | false -> streak)
+  in
+
+  let dimension_functions =
+    [
+      (Position.left, Position.right);
+      (Position.up, Position.down);
+      (Position.down_left, Position.up_right);
+      (Position.down_right, Position.up_left);
+    ]
+  in
+  let are_dimensions_winner =
+    List.map dimension_functions ~f:(fun (direction_fun1, direction_fun2) ->
+        check_direction direction_fun1 position peice game 0
+        + check_direction direction_fun2 position peice game 0
+        + 1
+        >= winning_streak_length)
+  in
+  List.exists are_dimensions_winner ~f:(fun is_dimension_winner ->
+      is_dimension_winner)
+
+let is_pos_in_bounds (position : Position.t) (game : Game.t) =
+  let board_length = Game_kind.board_length game.game_kind in
+  position.row < board_length && position.column < board_length
+
+let evaluate_assuming_no_tie (game : Game.t) =
   Map.fold game.board ~init:Evaluation.Game_continues
     ~f:(fun ~key ~data game_state ->
-      let board_length = Game_kind.board_length game.game_kind in
       match game_state with
       | Game_continues -> (
-          match key.row < board_length && key.column < board_length with
-          | true -> check_for_winner key data game
+          match is_pos_in_bounds key game with
+          | true -> (
+              match check_for_winner key data game with
+              | true -> Game_over { winner = Some data }
+              | false -> game_state)
           | false -> Illegal_move)
       | Illegal_move | Game_over _ -> game_state)
 
+let is_board_full (game : Game.t) = available_moves game |> List.is_empty
+
+let evaluate (game : Game.t) : Evaluation.t =
+  let state_if_not_a_tie = evaluate_assuming_no_tie game in
+  match (state_if_not_a_tie, is_board_full game) with
+  | Evaluation.Game_continues, true -> Game_over { winner = None }
+  | _, _ -> state_if_not_a_tie
+
 (* Exercise 3 *)
 let winning_moves ~(me : Piece.t) (game : Game.t) : Position.t list =
-  ignore me;
-  ignore game;
-  failwith "Implement me!"
+  List.filter (available_moves game) ~f:(fun pos ->
+      check_for_winner pos me game)
 
 (* Exercise 4 *)
 let losing_moves ~(me : Piece.t) (game : Game.t) : Position.t list =
@@ -160,7 +198,7 @@ let exercise_two =
      fun () ->
        let evaluation = evaluate win_for_x in
        print_s [%sexp (evaluation : Evaluation.t)];
-       let evaluation = evaluate win_for_x in
+       let evaluation = evaluate non_win in
        print_s [%sexp (evaluation : Evaluation.t)];
        return ())
 
