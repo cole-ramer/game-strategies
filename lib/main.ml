@@ -29,6 +29,34 @@ let non_win =
       ({ row = 2; column = 0 }, O);
     ]
 
+let x_in_the_corners =
+  init_game
+    [
+      ({ row = 0; column = 0 }, X);
+      ({ row = 0; column = 2 }, X);
+      ({ row = 2; column = 0 }, X);
+      ({ row = 2; column = 2 }, X);
+      ({ row = 1; column = 1 }, O);
+    ]
+(*
+let x_and_o_both_about_to_win =
+  init_game
+    [
+      ({ row = 0; column = 0 }, X);
+      ({ row = 0; column = 2 }, X);
+      ({ row = 2; column = 0 }, O);
+      ({ row = 2; column = 2 }, O);
+    ]
+
+let x_and_o_competing_for_same_spot =
+  init_game
+    [
+      ({ row = 0; column = 0 }, X);
+      ({ row = 2; column = 2 }, X);
+      ({ row = 1; column = 0 }, O);
+      ({ row = 1; column = 2 }, O);
+    ] *)
+
 let print_game (game : Game.t) =
   let break_line =
     List.init
@@ -176,11 +204,33 @@ let winning_moves ~(me : Piece.t) (game : Game.t) : Position.t list =
   List.filter (available_moves game) ~f:(fun pos ->
       check_for_winner pos me game)
 
+let%expect_test "winning moves test one winning move right vertical for x" =
+  let x_winning_moves = winning_moves ~me:X non_win in
+  let o_winning_moves = winning_moves ~me:O non_win in
+  print_s
+    [%message
+      (x_winning_moves : Position.t list) (o_winning_moves : Position.t list)];
+  [%expect
+    {|
+    ((x_winning_moves (((row 1) (column 1)))) (o_winning_moves ()))
+    |}];
+  return ()
+
+let%expect_test "winning moves for x in the corners and o in the middle" =
+  let x_winning_moves = winning_moves ~me:X x_in_the_corners in
+  let o_winning_moves = winning_moves ~me:O x_in_the_corners in
+  print_s
+    [%message
+      (x_winning_moves : Position.t list) (o_winning_moves : Position.t list)];
+  [%expect
+    {|
+    ((x_winning_moves (((row 0) (column 1)) ((row 1) (column 0)) ((row 1) (column 2)) ((row 2) (column 1)))) (o_winning_moves ()))
+    |}];
+  return ()
+
 (* Exercise 4 *)
 let losing_moves ~(me : Piece.t) (game : Game.t) : Position.t list =
-  ignore me;
-  ignore game;
-  failwith "Implement me!"
+  match me with X -> winning_moves ~me:O game | O -> winning_moves ~me:X game
 
 let exercise_one =
   Command.async ~summary:"Exercise 1: Where can I move?"
