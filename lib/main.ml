@@ -341,20 +341,29 @@ let%expect_test "need to play middle to win/not lose" =
   print_s [%message (x_move : Position.t) (o_move : Position.t)];
   [%expect {| ((x_move ((row 1) (column 1))) (o_move ((row 1) (column 1)))) |}];
   return ()
-(* let rec minimax game depth ~you_play : float =
+
+let rec minimax game depth ~you_play : float * Position.t =
   match (depth = 0, evaluate game) with
   | false, Game_continues ->
-      let value =
+      let inital_value, comparison_function =
         match you_play with
-        | Piece.X -> Float.neg_infinity
-        | O -> Float.infinity
+        | Piece.X -> (Float.neg_infinity, Float.( > ))
+        | O -> (Float.infinity, Float.( < ))
       in
-      List.fold ~init:value (available_moves game)
-        ~f:(fun cur_val possible_position ->
-          Float.max cur_val
-            (minimax
-               (Game.set_piece game possible_position you_play)
-               (depth - 1) ~you_play:(Piece.flip you_play)))
+      List.fold
+        ~init:(inital_value, { Position.row = 0; column = 0 })
+        (available_moves game)
+        ~f:(fun (cur_val, cur_pos) possible_position ->
+          let temp_val, _ =
+            minimax
+              (Game.set_piece game possible_position you_play)
+              (depth - 1) ~you_play:(Piece.flip you_play)
+          in
+          match comparison_function temp_val cur_val with
+          | true -> (temp_val, possible_position)
+          | false -> (cur_val, cur_pos))
   | _, Game_over { winner = Some player } -> (
-      match player with X -> Float.infinity | O -> Float.neg_infinity)
-  | _, _ -> 0. *)
+      match player with
+      | X -> (Float.infinity, { Position.row = 0; column = 0 })
+      | O -> (Float.neg_infinity, { row = 0; column = 0 }))
+  | _, _ -> (0., { row = 0; column = 0 })
