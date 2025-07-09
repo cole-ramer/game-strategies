@@ -38,7 +38,7 @@ let x_in_the_corners =
       ({ row = 2; column = 2 }, X);
       ({ row = 1; column = 1 }, O);
     ]
-(*
+
 let x_and_o_both_about_to_win =
   init_game
     [
@@ -47,7 +47,7 @@ let x_and_o_both_about_to_win =
       ({ row = 2; column = 0 }, O);
       ({ row = 2; column = 2 }, O);
     ]
-
+(*
 let x_and_o_competing_for_same_spot =
   init_game
     [
@@ -178,6 +178,7 @@ let is_pos_in_bounds (position : Position.t) (game : Game.t) =
   let board_length = Game_kind.board_length game.game_kind in
   position.row < board_length && position.column < board_length
 
+(*could use fold_until*)
 let evaluate_assuming_no_tie (game : Game.t) =
   Map.fold game.board ~init:Evaluation.Game_continues
     ~f:(fun ~key ~data game_state ->
@@ -224,13 +225,49 @@ let%expect_test "winning moves for x in the corners and o in the middle" =
       (x_winning_moves : Position.t list) (o_winning_moves : Position.t list)];
   [%expect
     {|
-    ((x_winning_moves (((row 0) (column 1)) ((row 1) (column 0)) ((row 1) (column 2)) ((row 2) (column 1)))) (o_winning_moves ()))
+    ((x_winning_moves
+      (((row 0) (column 1)) ((row 1) (column 0)) ((row 1) (column 2))
+       ((row 2) (column 1))))
+     (o_winning_moves ()))
     |}];
+  return ()
+
+let%expect_test "both x and o about to win seperatly" =
+  let x_winning_moves = winning_moves ~me:X x_and_o_both_about_to_win in
+  let o_winning_moves = winning_moves ~me:O x_and_o_both_about_to_win in
+  print_s
+    [%message
+      (x_winning_moves : Position.t list) (o_winning_moves : Position.t list)];
+  [%expect
+    {|
+  ((x_winning_moves (((row 0) (column 1))))
+   (o_winning_moves (((row 2) (column 1)))))
+  |}];
   return ()
 
 (* Exercise 4 *)
 let losing_moves ~(me : Piece.t) (game : Game.t) : Position.t list =
-  match me with X -> winning_moves ~me:O game | O -> winning_moves ~me:X game
+  let blocking_moves = winning_moves ~me:(Piece.flip me) game in
+  match blocking_moves with
+  | [] -> []
+  | _ ->
+      List.filter (available_moves game) ~f:(fun possible_move ->
+          not (List.mem blocking_moves possible_move ~equal:Position.equal))
+
+let%expect_test "losing move for non-win" =
+  let x_losing_moves = losing_moves ~me:X non_win in
+  let o_losing_moves = losing_moves ~me:O non_win in
+  print_s
+    [%message
+      (x_losing_moves : Position.t list) (o_losing_moves : Position.t list)];
+  [%expect
+    {|
+  ((x_losing_moves ())
+   (o_losing_moves
+    (((row 0) (column 1)) ((row 0) (column 2)) ((row 1) (column 2))
+     ((row 2) (column 1)))))
+  |}];
+  return ()
 
 let exercise_one =
   Command.async ~summary:"Exercise 1: Where can I move?"
@@ -285,8 +322,39 @@ let command =
       ("four", exercise_four);
     ]
 
+let moves_that_dont_immediatly_lose ~(me : Piece.t) game =
+  let blocking_moves = winning_moves ~me:(Piece.flip me) game in
+  match blocking_moves with [] -> available_moves game | _ -> blocking_moves
+
 (* Exercise 5 *)
 let make_move ~(game : Game.t) ~(you_play : Piece.t) : Position.t =
-  ignore game;
-  ignore you_play;
-  failwith "Implement me!"
+  let moves_that_win = winning_moves ~me:you_play game in
+  match moves_that_win with
+  | [] ->
+      List.random_element_exn
+        (moves_that_dont_immediatly_lose ~me:you_play game)
+  | _ -> List.random_element_exn moves_that_win
+
+let%expect_test "need to play middle to win/not lose" =
+  let x_move = make_move ~game:non_win ~you_play:X in
+  let o_move = make_move ~game:non_win ~you_play:O in
+  print_s [%message (x_move : Position.t) (o_move : Position.t)];
+  [%expect {| ((x_move ((row 1) (column 1))) (o_move ((row 1) (column 1)))) |}];
+  return ()
+(* let rec minimax game depth ~you_play : float =
+  match (depth = 0, evaluate game) with
+  | false, Game_continues ->
+      let value =
+        match you_play with
+        | Piece.X -> Float.neg_infinity
+        | O -> Float.infinity
+      in
+      List.fold ~init:value (available_moves game)
+        ~f:(fun cur_val possible_position ->
+          Float.max cur_val
+            (minimax
+               (Game.set_piece game possible_position you_play)
+               (depth - 1) ~you_play:(Piece.flip you_play)))
+  | _, Game_over { winner = Some player } -> (
+      match player with X -> Float.infinity | O -> Float.neg_infinity)
+  | _, _ -> 0. *)
