@@ -123,15 +123,34 @@ let is_pos_in_bounds (position : Position.t) (game : Game.t) =
 (* Exercise 1 *)
 let available_moves (game : Game.t) : Position.Set.t =
   let availble_moves_set = Position.Set.empty in
-  Map.key_set game.board
-  |> Set.fold ~init:availble_moves_set
-       ~f:(fun availble_moves_cur pos_in_board ->
+  let peicies_played = Map.key_set game.board in
+  match Set.is_empty peicies_played with
+  | true ->
+      let board_length = Game_kind.board_length game.game_kind in
+      Set.add availble_moves_set
+        { Position.row = board_length / 2; column = board_length / 2 }
+  | false ->
+      Set.fold peicies_played ~init:availble_moves_set
+        ~f:(fun availible_moves_cur pos_in_board ->
+          let pos_functions = Position.all_offsets in
+          List.fold pos_functions ~init:availible_moves_cur
+            ~f:(fun availble_moves_getting_pos_added pos_function ->
+              let possible_position = pos_function pos_in_board in
+              match
+                is_pos_in_bounds possible_position game
+                && not (Set.mem peicies_played possible_position)
+              with
+              | true ->
+                  Set.add availble_moves_getting_pos_added possible_position
+              | false -> availble_moves_getting_pos_added))
+
+(* ~f:(fun availble_moves_cur pos_in_board ->
          List.fold Position.all_offsets ~init:availble_moves_cur
            ~f:(fun availble_moves_cur pos_func ->
              let possible_position = pos_func pos_in_board in
              match is_pos_in_bounds possible_position game with
-             | true -> Set.add availble_moves_cur possible_position
-             | false -> availble_moves_cur))
+             | true -> Hash_set.add availble_moves_cur possible_position 
+             | false -> ())) *)
 (* |> List.map ~f:(fun position_in_board ->
          let offset_positions_functions = Position.all_offsets in
          List.map offset_positions_functions ~f:(fun offset_position ->
@@ -144,28 +163,37 @@ let available_moves (game : Game.t) : Position.Set.t =
 let%expect_test "availble moves win_for_x" =
   let moves_availble = available_moves win_for_x in
   print_s [%message (moves_availble : Position.Set.t)];
-  [%expect {||}];
+  [%expect {| (moves_availble ()) |}];
   return ()
 
 let%expect_test "availble moves non_win" =
   let moves_availble = available_moves non_win in
   print_s [%message (moves_availble : Position.Set.t)];
   [%expect
-    {|(moves_availble (((row 0) (column 1)) ((row 1) (column 1)) ((row 1) (column 2)) ((row 2) (column 1))))|}];
+    {|
+      (moves_availble
+       (((row 0) (column 1)) ((row 1) (column 1)) ((row 1) (column 2))
+        ((row 2) (column 1))))|}];
   return ()
 
 let%expect_test "availble moves x_in_the_corners" =
   let moves_availble = available_moves x_in_the_corners in
   print_s [%message (moves_availble : Position.Set.t)];
   [%expect
-    {|(moves_availble (((row 0) (column 1)) ((row 1) (column 1)) ((row 1) (column 2)) ((row 2) (column 1))))|}];
+    {|
+      (moves_availble
+       (((row 0) (column 1)) ((row 1) (column 0)) ((row 1) (column 2))
+        ((row 2) (column 1))))|}];
   return ()
 
 let%expect_test "availble moves x_and_o_about_to_win" =
   let moves_availble = available_moves x_and_o_both_about_to_win in
   print_s [%message (moves_availble : Position.Set.t)];
   [%expect
-    {|(moves_availble (((row 0) (column 1)) ((row 1) (column 1)) ((row 1) (column 1)) ((row 1) (column 2)) ((row 2) (column 1))))|}];
+    {|
+      (moves_availble
+       (((row 0) (column 1)) ((row 1) (column 0)) ((row 1) (column 1))
+        ((row 1) (column 2)) ((row 2) (column 1))))|}];
   return ()
 
 let rec check_direction (direction_function : Position.t -> Position.t)
@@ -345,9 +373,72 @@ let command =
       ("four", exercise_four);
     ]
 
+let rec get_position_at_end_of_direction
+    (direction_function : Position.t -> Position.t) (distance : int) position :
+    Position.t =
+  if distance = 0 then direction_function position
+  else
+    get_position_at_end_of_direction direction_function (distance - 1)
+      (direction_function position)
+
+let is_pos_an_open_space (game : Game.t) position =
+  (not (Map.mem game.board position)) && is_pos_in_bounds position game
+
 (* let moves_that_dont_immediatly_lose ~(me : Piece.t) game =
   let blocking_moves = winning_moves ~me:(Piece.flip me) game in
   match blocking_moves with [] -> available_moves game | _ -> blocking_moves *)
+let get_score (game : Game.t) =
+  Map.fold game.board ~init:0. ~f:(fun ~key ~data cur_val ->
+      let dimension_functions =
+        [
+          (Position.left, Position.right);
+          (Position.up, Position.down);
+          (Position.down_left, Position.up_right);
+          (Position.down_right, Position.up_left);
+        ]
+      in
+      List.fold dimension_functions ~init:cur_val
+        ~f:(fun val_in_dimension_add (direction_fun1, direction_fun2) ->
+          let connected_in_direction1 =
+            check_direction direction_fun1 key data game 0
+          in
+          let connected_in_direction2 =
+            check_direction direction_fun2 key data game 0
+          in
+          let positon_after_streak1 =
+            get_position_at_end_of_direction direction_fun1
+              connected_in_direction1 key
+          in
+          let positon_after_streak2 =
+            get_position_at_end_of_direction direction_fun2
+              connected_in_direction2 key
+          in
+          let streak_size =
+            connected_in_direction1 + connected_in_direction2 + 1
+          in
+          let score_effect_magnitude =
+            match
+              ( streak_size,
+                is_pos_an_open_space game positon_after_streak1,
+                is_pos_an_open_space game positon_after_streak2 )
+            with
+            | 1, false, false -> 0.
+            | 1, true, false | 1, false, true -> 1.
+            | 1, true, true -> 2.
+            | 2, false, false -> 0.
+            | 2, true, false | 2, false, true -> 4.
+            | 2, true, true -> 16.
+            | 3, false, false -> 0.
+            | 3, true, false | 3, false, true -> 100.
+            | 3, true, true -> 1000000000.
+            | 4, false, false -> 0.
+            | 4, true, false | 4, false, true -> 10000000000.
+            | 4, true, true -> Float.infinity -. 1.
+            | _, _, _ -> Float.infinity
+          in
+          match data with
+          | X -> score_effect_magnitude +. val_in_dimension_add
+          | O -> (-1. *. score_effect_magnitude) +. val_in_dimension_add))
 
 let rec minimax game depth ~you_play : float * Position.t =
   match (depth = 0, evaluate game) with
@@ -357,9 +448,11 @@ let rec minimax game depth ~you_play : float * Position.t =
         | Piece.X -> (Float.neg_infinity, Float.( > ))
         | O -> (Float.infinity, Float.( < ))
       in
+      let moves_can_play = available_moves game in
+      (* fold until pass in alpha beta*)
       Set.fold
-        ~init:(inital_value, { Position.row = 0; column = 0 })
-        (available_moves game)
+        ~init:(inital_value, Set.choose_exn moves_can_play)
+        moves_can_play
         ~f:(fun (cur_val, cur_pos) possible_position ->
           let temp_val, _ =
             minimax
@@ -373,7 +466,8 @@ let rec minimax game depth ~you_play : float * Position.t =
       match player with
       | X -> (Float.infinity, { Position.row = 0; column = 0 })
       | O -> (Float.neg_infinity, { row = 0; column = 0 }))
-  | _, _ -> (0., { row = 0; column = 0 })
+  | _, Game_over { winner = None } -> (0., { row = 0; column = 0 })
+  | _, _ -> (get_score game, { row = 0; column = 0 })
 
 (* Exercise 5 *)
 let make_move ~(game : Game.t) ~(you_play : Piece.t) : Position.t =
@@ -385,7 +479,7 @@ let make_move ~(game : Game.t) ~(you_play : Piece.t) : Position.t =
   | _ -> List.random_element_exn moves_that_win *)
   match game.game_kind with
   | Omok ->
-      let _, move = minimax game 3 ~you_play in
+      let _, move = minimax game 2 ~you_play in
       move
   | Tic_tac_toe ->
       let _, move = minimax game 9 ~you_play in
@@ -395,5 +489,5 @@ let%expect_test "need to play middle to win/not lose" =
   let x_move = make_move ~game:non_win ~you_play:X in
   let o_move = make_move ~game:non_win ~you_play:O in
   print_s [%message (x_move : Position.t) (o_move : Position.t)];
-  [%expect {| ((x_move ((row 1) (column 1))) (o_move ((row 1) (column 1)))) |}];
+  [%expect {| ((x_move ((row 1) (column 2))) (o_move ((row 1) (column 1)))) |}];
   return ()

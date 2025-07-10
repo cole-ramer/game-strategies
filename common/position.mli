@@ -4,9 +4,10 @@ open! Core
      row indexes increment downwards.
      column indexes increment rightwards. *)
 type t = { row : int; column : int }
-[@@deriving sexp_of, equal, bin_io, compare]
+[@@deriving sexp_of, equal, bin_io, compare, hash]
 
 include Comparable.S_binable with type t := t
+module Hash_set : Hash_set.S with type elt = t
 
 val to_string : t -> string
 val in_bounds : t -> game_kind:Game_kind.t -> bool
