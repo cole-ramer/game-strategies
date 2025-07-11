@@ -432,7 +432,7 @@ let get_score (game : Game.t) =
             | 3, true, false | 3, false, true -> 100.
             | 3, true, true -> 1000000000.
             | 4, false, false -> 0.
-            | 4, true, false | 4, false, true -> 10000000000.
+            | 4, true, false | 4, false, true -> 1000000000000.
             | 4, true, true -> Float.infinity -. 1.
             | _, _, _ -> Float.infinity
           in
