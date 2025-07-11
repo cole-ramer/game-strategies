@@ -440,7 +440,16 @@ let get_score (game : Game.t) =
           | X -> score_effect_magnitude +. val_in_dimension_add
           | O -> (-1. *. score_effect_magnitude) +. val_in_dimension_add))
 
-let rec minimax game depth ~you_play : float * Position.t =
+module Minimax_looping_info = struct
+  type t = {
+    value : float;
+    position_that_got_value : Position.t;
+    alpha : float;
+    beta : float;
+  }
+end
+
+let rec minimax game depth ~(alpha : float) ~(beta : float) ~you_play =
   match (depth = 0, evaluate game) with
   | false, Game_continues ->
       let inital_value, comparison_function =
@@ -450,24 +459,75 @@ let rec minimax game depth ~you_play : float * Position.t =
       in
       let moves_can_play = available_moves game in
       (* fold until pass in alpha beta*)
-      Set.fold
-        ~init:(inital_value, Set.choose_exn moves_can_play)
+      Set.fold_until
+        ~init:
+          ({
+             value = inital_value;
+             position_that_got_value = Set.choose_exn moves_can_play;
+             alpha;
+             beta;
+           }
+            : Minimax_looping_info.t)
         moves_can_play
-        ~f:(fun (cur_val, cur_pos) possible_position ->
+        ~f:(fun
+            (cur_loop_info : Minimax_looping_info.t)
+            (possible_position : Position.t)
+          ->
           let temp_val, _ =
             minimax
               (Game.set_piece game possible_position you_play)
-              (depth - 1) ~you_play:(Piece.flip you_play)
+              (depth - 1) ~you_play:(Piece.flip you_play) ~alpha ~beta
           in
-          match comparison_function temp_val cur_val with
-          | true -> (temp_val, possible_position)
-          | false -> (cur_val, cur_pos))
+          let value, pos_to_get_value =
+            match comparison_function temp_val cur_loop_info.value with
+            | true -> (temp_val, possible_position)
+            | false ->
+                (cur_loop_info.value, cur_loop_info.position_that_got_value)
+          in
+          match you_play with
+          | X ->
+              if Float.( >= ) value cur_loop_info.beta then
+                Stop (value, pos_to_get_value)
+              else
+                Continue
+                  {
+                    value;
+                    position_that_got_value = pos_to_get_value;
+                    alpha = Float.max cur_loop_info.alpha value;
+                    beta;
+                  }
+          | O ->
+              if Float.( <= ) value cur_loop_info.alpha then
+                Stop (value, pos_to_get_value)
+              else
+                Continue
+                  {
+                    value;
+                    position_that_got_value = pos_to_get_value;
+                    alpha;
+                    beta = Float.min beta value;
+                  })
+        ~finish:(fun ending_loop_info ->
+          (ending_loop_info.value, ending_loop_info.position_that_got_value))
   | _, Game_over { winner = Some player } -> (
       match player with
       | X -> (Float.infinity, { Position.row = 0; column = 0 })
       | O -> (Float.neg_infinity, { row = 0; column = 0 }))
   | _, Game_over { winner = None } -> (0., { row = 0; column = 0 })
   | _, _ -> (get_score game, { row = 0; column = 0 })
+
+let debug_minimax game you_play =
+  let moves_can_play = available_moves game in
+  print_game game;
+  Set.iter moves_can_play ~f:(fun move ->
+      let value, _ =
+        minimax
+          (Game.set_piece game move you_play)
+          2 ~alpha:Float.neg_infinity ~beta:Float.infinity
+          ~you_play:(Piece.flip you_play)
+      in
+      print_s
+        [%message (value : float) (move : Position.t) (you_play : Piece.t)])
 
 (* Exercise 5 *)
 let make_move ~(game : Game.t) ~(you_play : Piece.t) : Position.t =
@@ -479,10 +539,15 @@ let make_move ~(game : Game.t) ~(you_play : Piece.t) : Position.t =
   | _ -> List.random_element_exn moves_that_win *)
   match game.game_kind with
   | Omok ->
-      let _, move = minimax game 2 ~you_play in
+      let _, move =
+        debug_minimax game you_play;
+        minimax game 3 ~alpha:Float.neg_infinity ~beta:Float.infinity ~you_play
+      in
       move
   | Tic_tac_toe ->
-      let _, move = minimax game 9 ~you_play in
+      let _, move =
+        minimax game 9 ~alpha:Float.neg_infinity ~beta:Float.infinity ~you_play
+      in
       move
 
 let%expect_test "need to play middle to win/not lose" =
